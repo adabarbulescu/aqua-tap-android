@@ -1,6 +1,6 @@
 package com.adabarbulescu.aquatap.ui
 
-import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -15,6 +15,9 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -30,6 +33,7 @@ import java.util.Locale
 @Composable
 fun AquaTapScreen(
     state: HydrationState,
+    snackbarHostState: SnackbarHostState,
     onSimulateScan: () -> Unit,
     onReset: () -> Unit,
     modifier: Modifier = Modifier
@@ -46,116 +50,122 @@ fun AquaTapScreen(
 
     val percentage = (progress * 100).toInt()
 
-    Column(
-        modifier = modifier
-            .fillMaxSize()
-            .padding(24.dp),
-        verticalArrangement = Arrangement.spacedBy(20.dp)
-    ) {
-        Column {
-            Text(
-                text = "AquaTap",
-                style = MaterialTheme.typography.headlineLarge,
-                fontWeight = FontWeight.Bold
-            )
-
-            Text(
-                text = "NFC-powered hydration tracking",
-                style = MaterialTheme.typography.bodyMedium
-            )
-        }
-
-        WaterBottleView(
-            progress = progress,
+    Scaffold(
+        snackbarHost = { SnackbarHost(hostState = snackbarHostState) },
+        modifier = modifier.fillMaxSize()
+    ) { paddingValues ->
+        Column(
             modifier = Modifier
-                .size(width = 80.dp, height = 120.dp)
-                .align(Alignment.CenterHorizontally)
-        )
-
-        Card(
-            modifier = Modifier.fillMaxWidth()
+                .fillMaxSize()
+                .padding(paddingValues)
+                .padding(24.dp),
+            verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(20.dp)
         ) {
+            Column {
+                Text(
+                    text = "AquaTap",
+                    style = MaterialTheme.typography.headlineLarge,
+                    fontWeight = FontWeight.Bold
+                )
+
+                Text(
+                    text = "NFC-powered hydration tracking",
+                    style = MaterialTheme.typography.bodyMedium
+                )
+            }
+
+            WaterBottleView(
+                progress = progress,
+                modifier = Modifier
+                    .size(width = 80.dp, height = 120.dp)
+                    .align(Alignment.CenterHorizontally)
+            )
+
+            Card(
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(
+                    modifier = Modifier.padding(20.dp),
+                    verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(12.dp)
+                ) {
+                    Text(
+                        text = "Daily progress",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold
+                    )
+
+                    Text(
+                        text = "${state.totalIntakeMl} / ${state.dailyGoalMl} ml",
+                        style = MaterialTheme.typography.bodyLarge
+                    )
+
+                    LinearProgressIndicator(
+                        progress = { progress },
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            }
+
+            IntakeStats(
+                totalIntakeMl = state.totalIntakeMl,
+                remainingMl = remainingMl,
+                percentage = percentage,
+                modifier = Modifier.fillMaxWidth()
+            )
+
+            Row(
+                horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(12.dp)
+            ) {
+                Button(
+                    onClick = onSimulateScan,
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Text("Simulate NFC scan")
+                }
+
+                OutlinedButton(
+                    onClick = onReset,
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Text("Reset")
+                }
+            }
+
             Column(
-                modifier = Modifier.padding(20.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
+                modifier = Modifier
+                    .weight(1f)
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(8.dp)
             ) {
                 Text(
-                    text = "Daily progress",
+                    text = "Recent intake",
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.SemiBold
                 )
 
-                Text(
-                    text = "${state.totalIntakeMl} / ${state.dailyGoalMl} ml",
-                    style = MaterialTheme.typography.bodyLarge
-                )
+                if (state.history.isEmpty()) {
+                    Text(
+                        text = "No scans recorded yet.",
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                } else {
+                    state.history.forEach { event ->
+                        Column(
+                            verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(4.dp)
+                        ) {
+                            Text(
+                                text = "+${event.amountMl} ml",
+                                style = MaterialTheme.typography.bodyLarge,
+                                fontWeight = FontWeight.Medium
+                            )
 
-                LinearProgressIndicator(
-                    progress = { progress },
-                    modifier = Modifier.fillMaxWidth()
-                )
-            }
-        }
+                            Text(
+                                text = formatTimestamp(event.timestampMillis),
+                                style = MaterialTheme.typography.bodySmall
+                            )
 
-        IntakeStats(
-            totalIntakeMl = state.totalIntakeMl,
-            remainingMl = remainingMl,
-            percentage = percentage,
-            modifier = Modifier.fillMaxWidth()
-        )
-
-        Row(
-            horizontalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            Button(
-                onClick = onSimulateScan,
-                modifier = Modifier.weight(1f)
-            ) {
-                Text("Simulate NFC scan")
-            }
-
-            OutlinedButton(
-                onClick = onReset,
-                modifier = Modifier.weight(1f)
-            ) {
-                Text("Reset")
-            }
-        }
-
-        Column(
-            modifier = Modifier
-                .weight(1f)
-                .verticalScroll(rememberScrollState()),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            Text(
-                text = "Recent intake",
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.SemiBold
-            )
-
-            if (state.history.isEmpty()) {
-                Text(
-                    text = "No scans recorded yet.",
-                    style = MaterialTheme.typography.bodyMedium
-                )
-            } else {
-                state.history.forEach { event ->
-                    Column(
-                        verticalArrangement = Arrangement.spacedBy(4.dp)
-                    ) {
-                        Text(
-                            text = "+${event.amountMl} ml",
-                            style = MaterialTheme.typography.bodyLarge,
-                            fontWeight = FontWeight.Medium
-                        )
-
-                        Text(
-                            text = formatTimestamp(event.timestampMillis),
-                            style = MaterialTheme.typography.bodySmall
-                        )
-
-                        HorizontalDivider()
+                            HorizontalDivider()
+                        }
                     }
                 }
             }

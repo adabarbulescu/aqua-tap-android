@@ -6,24 +6,32 @@ import android.os.Bundle
 import android.os.VibrationEffect
 import android.os.Vibrator
 import android.os.VibratorManager
-import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
 import com.adabarbulescu.aquatap.state.HydrationViewModel
 import com.adabarbulescu.aquatap.ui.AquaTapScreen
 import com.adabarbulescu.aquatap.ui.theme.AquaTapTheme
+import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
 
     private val hydrationViewModel by viewModels<HydrationViewModel>()
     private var nfcAdapter: NfcAdapter? = null
+    
+    private var lastScanTime: Long = 0
+    private val scanCooldownMillis = 1500L
+
+    private lateinit var onScanDetected: () -> Unit
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -34,6 +42,17 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             val state by hydrationViewModel.state.collectAsState()
+            val snackbarHostState = remember { SnackbarHostState() }
+            val scope = rememberCoroutineScope()
+
+            onScanDetected = {
+                hydrationViewModel.recordIntake()
+                triggerHapticFeedback()
+                scope.launch {
+                    snackbarHostState.currentSnackbarData?.dismiss()
+                    snackbarHostState.showSnackbar("250 ml added")
+                }
+            }
 
             AquaTapTheme {
                 Surface(
@@ -41,10 +60,8 @@ class MainActivity : ComponentActivity() {
                 ) {
                     AquaTapScreen(
                         state = state,
-                        onSimulateScan = { 
-                            hydrationViewModel.recordIntake()
-                            triggerFeedback()
-                        },
+                        snackbarHostState = snackbarHostState,
+                        onSimulateScan = { onScanDetected() },
                         onReset = { hydrationViewModel.resetDailyProgress() }
                     )
                 }
@@ -66,9 +83,12 @@ class MainActivity : ComponentActivity() {
         nfcAdapter?.enableReaderMode(
             this,
             { _ ->
-                runOnUiThread {
-                    hydrationViewModel.recordIntake()
-                    triggerFeedback()
+                val currentTime = System.currentTimeMillis()
+                if (currentTime - lastScanTime >= scanCooldownMillis) {
+                    lastScanTime = currentTime
+                    runOnUiThread {
+                        onScanDetected()
+                    }
                 }
             },
             NfcAdapter.FLAG_READER_NFC_A or
@@ -84,8 +104,7 @@ class MainActivity : ComponentActivity() {
         nfcAdapter?.disableReaderMode(this)
     }
 
-    private fun triggerFeedback() {
-        // Haptic feedback
+    private fun triggerHapticFeedback() {
         val vibrator = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             val vibratorManager = getSystemService(VIBRATOR_MANAGER_SERVICE) as VibratorManager
             vibratorManager.defaultVibrator
@@ -100,8 +119,5 @@ class MainActivity : ComponentActivity() {
             @Suppress("DEPRECATION")
             vibrator.vibrate(100)
         }
-
-        // Visual feedback
-        Toast.makeText(this, "Intake Recorded! +250ml", Toast.LENGTH_SHORT).show()
     }
 }

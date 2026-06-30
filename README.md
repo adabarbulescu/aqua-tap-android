@@ -4,6 +4,14 @@ AquaTap is a native Android prototype that turns an NFC-tagged water bottle into
 
 The project has been manually verified with physical NFC tags on an NFC-capable Android device.
 
+<p align="center">
+  <img
+    src="https://github.com/user-attachments/assets/95030114-5c10-447b-85d9-bdc1df678623"
+    alt="AquaTap Android app screenshot"
+    width="280"
+  />
+</p>
+
 ---
 
 ## Features

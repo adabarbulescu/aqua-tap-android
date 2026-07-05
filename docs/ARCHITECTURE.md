@@ -8,34 +8,42 @@ AquaTap is built using modern Android development practices, focusing on a clean
 This layer is the core of the application, containing pure Kotlin logic and data models with no dependencies on Android frameworks.
 
 - **`IntakeEvent`**: A simple data class representing a single hydration event (amount and timestamp).
-- **`HydrationState`**: Encapsulates the entire state of the hydration tracking for the day.
-- **`HydrationCalculator`**: A singleton object providing utility functions for UI calculations, such as progress percentage and remaining intake. This is fully unit-tested.
+- **`HydrationState`**: Encapsulates the entire state of the hydration tracking, including progress, history, and bottle pairing status.
+- **`HydrationCalculator`**: A singleton object providing utility functions for UI calculations, such as progress percentage and remaining intake.
+- **`NfcTagMatcher`**: Logic for validating scanned tags against the paired bottle ID.
 
-### 2. State/ViewModel Layer (`com.adabarbulescu.aquatap.state`)
+### 2. Data Layer (`com.adabarbulescu.aquatap.data`)
+Handles data persistence and external communication.
+
+- **`BottleTagRepository`**: Interface and implementation (`DataStoreBottleTagRepository`) that uses **Jetpack Preferences DataStore** to persist the paired bottle's NFC ID across app restarts.
+
+### 3. State/ViewModel Layer (`com.adabarbulescu.aquatap.state`)
 Acts as the bridge between the UI and the domain logic.
 
 - **`HydrationViewModel`**: 
-    - Exposes a `StateFlow<HydrationState>` to the UI.
-    - Manages the logic for recording new intake and resetting progress.
-    - Ensures that history is capped to a manageable size for the MVP.
+    - Exposes a `StateFlow<HydrationState>` for UI state.
+    - Exposes a `SharedFlow<UiEvent>` for one-time events like haptic feedback and Snackbars.
+    - Orchestrates the pairing flow: enables pairing mode, stores new tag IDs, and validates future scans.
+    - Manages intake recording and history capping.
 
-### 3. UI Layer (`com.adabarbulescu.aquatap.ui`)
+### 4. UI Layer (`com.adabarbulescu.aquatap.ui`)
 Built entirely with Jetpack Compose, the UI is a function of the state provided by the ViewModel.
 
-- **`AquaTapScreen`**: The top-level Composable that organizes the dashboard. It uses a `Scaffold` to manage the `SnackbarHost` for user feedback.
-- **`WaterBottleView`**: A custom-drawn component using Compose `Canvas`. It uses `animateFloatAsState` for smooth filling and `rememberInfiniteTransition` for the wave effect.
-- **`IntakeStats`**: Displays granular data cards (Total, Remaining, Percentage).
+- **`AquaTapScreen`**: The top-level Composable that organizes the dashboard, pairing UI, and history.
+- **`WaterBottleView`**: A custom-drawn component using Compose `Canvas` with animated filling and wave effects.
 
-### 4. Hardware Integration (`MainActivity`)
+### 5. Hardware Integration (`MainActivity`)
 The `MainActivity` handles the integration with Android system services.
 
-- **NFC Reader Mode**: Implemented using `enableReaderMode` to provide a low-latency, "foreground-only" scanning experience.
-- **Haptic Feedback**: Integrates with the `Vibrator` service to provide physical confirmation of a scan.
-- **Lifecycle Management**: Carefully manages NFC scanning and cooldown timers to prevent duplicate records and ensure battery efficiency.
+- **NFC Reader Mode**: Uses `enableReaderMode` to detect tag IDs and pass them to the ViewModel for validation.
+- **Haptic Feedback**: Integrates with the `Vibrator` service to provide physical confirmation.
+- **Event Collection**: Observes `viewModel.events` to trigger Snackbars and vibrations.
 
 ## Data Flow
-1. **Trigger**: NFC Tag detection or Button Click.
-2. **Action**: `MainActivity` calls `viewModel.recordIntake()`.
-3. **Logic**: ViewModel updates the `_state` MutableStateFlow.
-4. **Reaction**: Compose UI observes the `StateFlow` and re-composes automatically.
-5. **Feedback**: `MainActivity` triggers vibration and shows a Snackbar.
+1. **Trigger**: NFC Tag detection in `MainActivity`.
+2. **Action**: `MainActivity` calls `viewModel.handleNfcScan(tagId)`.
+3. **Validation**: ViewModel uses `NfcTagMatcher` to check the tag against the repository's `pairedTagId`.
+4. **State Update**: If valid, ViewModel updates `HydrationState` and emits a `UiEvent`.
+5. **Reaction**: 
+    - Compose UI re-composes based on the new state.
+    - `MainActivity` reacts to the `UiEvent` by triggering specific haptic feedback and showing a Snackbar.

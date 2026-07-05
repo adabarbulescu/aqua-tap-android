@@ -48,20 +48,20 @@ class MainActivity : ComponentActivity() {
                 hydrationViewModel.events.collect { event ->
                     when (event) {
                         HydrationViewModel.UiEvent.IntakeRecorded -> {
-                            triggerHapticFeedback()
+                            triggerSuccessHapticFeedback()
                             scope.launch {
                                 snackbarHostState.currentSnackbarData?.dismiss()
                                 snackbarHostState.showSnackbar("250 ml added")
                             }
                         }
                         HydrationViewModel.UiEvent.BottlePaired -> {
-                            triggerHapticFeedback()
+                            triggerSuccessHapticFeedback()
                             scope.launch {
                                 snackbarHostState.showSnackbar("Bottle paired successfully!")
                             }
                         }
                         HydrationViewModel.UiEvent.WrongBottle -> {
-                            triggerHapticFeedback() // Maybe a different vibration for error?
+                            triggerErrorHapticFeedback()
                             scope.launch {
                                 snackbarHostState.showSnackbar("This is not your paired bottle.")
                             }
@@ -83,8 +83,6 @@ class MainActivity : ComponentActivity() {
                         state = state,
                         snackbarHostState = snackbarHostState,
                         onSimulateScan = { 
-                            // For simulation, we'll just record intake directly if paired,
-                            // or simulate a scan with a fake ID.
                             if (state.pairedTagId == null && !state.isPairingEnabled) {
                                 scope.launch { snackbarHostState.showSnackbar("Pair a bottle first (use simulation ID)") }
                             } else {
@@ -136,20 +134,33 @@ class MainActivity : ComponentActivity() {
         nfcAdapter?.disableReaderMode(this)
     }
 
-    private fun triggerHapticFeedback() {
-        val vibrator = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+    private fun getVibrator(): Vibrator {
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             val vibratorManager = getSystemService(VIBRATOR_MANAGER_SERVICE) as VibratorManager
             vibratorManager.defaultVibrator
         } else {
             @Suppress("DEPRECATION")
             getSystemService(VIBRATOR_SERVICE) as Vibrator
         }
+    }
 
+    private fun triggerSuccessHapticFeedback() {
+        val vibrator = getVibrator()
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             vibrator.vibrate(VibrationEffect.createOneShot(100, VibrationEffect.DEFAULT_AMPLITUDE))
         } else {
             @Suppress("DEPRECATION")
             vibrator.vibrate(100)
+        }
+    }
+
+    private fun triggerErrorHapticFeedback() {
+        val vibrator = getVibrator()
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            vibrator.vibrate(VibrationEffect.createWaveform(longArrayOf(0, 100, 100, 100), -1))
+        } else {
+            @Suppress("DEPRECATION")
+            vibrator.vibrate(longArrayOf(0, 100, 100, 100), -1)
         }
     }
 }

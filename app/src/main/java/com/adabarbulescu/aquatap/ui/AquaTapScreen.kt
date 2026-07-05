@@ -185,8 +185,13 @@ private fun HeaderSection(
                     }
                 }
             } else {
+                val displayedId = if (pairedTagId.length > 6) {
+                    "****${pairedTagId.takeLast(4)}"
+                } else {
+                    pairedTagId
+                }
                 Text(
-                    text = "Paired with bottle: $pairedTagId",
+                    text = "Paired with bottle: $displayedId",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.secondary
                 )

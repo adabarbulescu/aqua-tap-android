@@ -86,7 +86,7 @@ class MainActivity : ComponentActivity() {
                             if (state.pairedTagId == null && !state.isPairingEnabled) {
                                 scope.launch { snackbarHostState.showSnackbar("Pair a bottle first (use simulation ID)") }
                             } else {
-                                hydrationViewModel.handleNfcScan(state.pairedTagId ?: "SIM_TAG_123")
+                                hydrationViewModel.handleNfcScan(state.pairedTagId ?: "SIM_TAG_123", isSimulated = true)
                             }
                         },
                         onReset = { hydrationViewModel.resetDailyProgress() },

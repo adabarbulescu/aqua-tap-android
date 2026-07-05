@@ -1,6 +1,8 @@
 package com.adabarbulescu.aquatap
 
 import com.adabarbulescu.aquatap.data.BottleTagRepository
+import com.adabarbulescu.aquatap.data.IntakeEventEntity
+import com.adabarbulescu.aquatap.data.IntakeRepository
 import com.adabarbulescu.aquatap.state.HydrationViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -22,7 +24,7 @@ class HydrationViewModelTest {
 
     private val testDispatcher = StandardTestDispatcher()
     
-    private class FakeRepository : BottleTagRepository {
+    private class FakeBottleRepository : BottleTagRepository {
         private val _pairedId = MutableStateFlow<String?>(null)
         override val pairedTagId: Flow<String?> = _pairedId
 
@@ -35,14 +37,29 @@ class HydrationViewModelTest {
         }
     }
 
+    private class FakeIntakeRepository : IntakeRepository {
+        private val _events = MutableStateFlow<List<IntakeEventEntity>>(emptyList())
+        override fun observeEventsForDay(start: Long, end: Long): Flow<List<IntakeEventEntity>> = _events
+
+        override suspend fun insertEvent(event: IntakeEventEntity) {
+            _events.value = _events.value + event
+        }
+
+        override suspend fun clearDay(start: Long, end: Long) {
+            _events.value = emptyList()
+        }
+    }
+
     private lateinit var viewModel: HydrationViewModel
-    private lateinit var repository: FakeRepository
+    private lateinit var bottleRepository: FakeBottleRepository
+    private lateinit var intakeRepository: FakeIntakeRepository
 
     @Before
     fun setup() {
         Dispatchers.setMain(testDispatcher)
-        repository = FakeRepository()
-        viewModel = HydrationViewModel(repository)
+        bottleRepository = FakeBottleRepository()
+        intakeRepository = FakeIntakeRepository()
+        viewModel = HydrationViewModel(bottleRepository, intakeRepository)
     }
 
     @After
@@ -69,18 +86,19 @@ class HydrationViewModelTest {
     @Test
     fun scanningPairedTag_recordsIntake() = runTest {
         // Pair first
-        repository.savePairedTagId("TAG123")
+        bottleRepository.savePairedTagId("TAG123")
         advanceUntilIdle()
         
         viewModel.handleNfcScan("TAG123")
         advanceUntilIdle()
         
         assertEquals(250, viewModel.state.value.totalIntakeMl)
+        assertEquals(1, viewModel.state.value.history.size)
     }
 
     @Test
     fun scanningWrongTag_doesNotRecordIntake() = runTest {
-        repository.savePairedTagId("TAG123")
+        bottleRepository.savePairedTagId("TAG123")
         advanceUntilIdle()
         
         viewModel.handleNfcScan("WRONG_TAG")
@@ -91,12 +109,29 @@ class HydrationViewModelTest {
 
     @Test
     fun unpairing_clearsTagId() = runTest {
-        repository.savePairedTagId("TAG123")
+        bottleRepository.savePairedTagId("TAG123")
         advanceUntilIdle()
         
         viewModel.unpairBottle()
         advanceUntilIdle()
         
         assertNull(viewModel.state.value.pairedTagId)
+    }
+
+    @Test
+    fun resetDailyProgress_clearsHistory() = runTest {
+        bottleRepository.savePairedTagId("TAG123")
+        advanceUntilIdle()
+        
+        viewModel.handleNfcScan("TAG123")
+        advanceUntilIdle()
+        
+        assertEquals(250, viewModel.state.value.totalIntakeMl)
+        
+        viewModel.resetDailyProgress()
+        advanceUntilIdle()
+        
+        assertEquals(0, viewModel.state.value.totalIntakeMl)
+        assertEquals(0, viewModel.state.value.history.size)
     }
 }

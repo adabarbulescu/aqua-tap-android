@@ -18,16 +18,18 @@ The project has been manually verified with physical NFC tags on an NFC-capable 
 ## Features
 
 - **Bottle Pairing**: Semantic NFC interaction. Pair your app with a specific bottle tag; other tags are rejected.
+- **Persistent History**: Daily intake events are stored locally using **Room Database**, ensuring your progress survives app restarts.
 - **NFC-based Intake Logging**: Uses Android Reader Mode for immediate tag detection.
 - **Physical NFC Verification**: Tested and verified with real NFC hardware.
 - **Simulated Scan Fallback**: A manual button for testing on emulators or demoing without tags.
 - **Daily Progress Dashboard**: Real-time tracking of current intake vs. daily goal.
 - **Animated Water Bottle**: A custom Compose Canvas visualization that fills dynamically as you drink.
-- **Recent Intake History**: A scrollable list of recent scans with timestamps.
+- **Recent Intake History**: A scrollable list of recent scans with timestamps, loaded from the database.
 - **Instant Feedback**: Material 3 Snackbar and haptic (vibration) confirmation upon successful scan.
 - **Scan Cooldown Guard**: Prevents accidental duplicate entries from rapid repeated detections (1500ms window).
-- **Persistent Preferences**: Paired bottle ID is stored locally using DataStore.
+- **Persistent Preferences**: Paired bottle ID is stored locally using **Preferences DataStore**.
 - **Unit Tested**: Core domain logic, tag matching, and ViewModel states are covered with JUnit tests.
+- **CI/CD**: GitHub Actions workflow for automated build and test verification.
 
 ---
 
@@ -36,11 +38,12 @@ The project has been manually verified with physical NFC tags on an NFC-capable 
 - **Language**: Kotlin
 - **UI Framework**: Jetpack Compose (Material 3)
 - **NFC**: Android NFC Reader Mode
-- **Persistence**: Preferences DataStore
+- **Persistence**: Room Database (History), Preferences DataStore (Pairing)
 - **Architecture**: MVVM (ViewModel, StateFlow)
 - **Graphics**: Compose Canvas for custom animations
 - **Testing**: JUnit 4, Kotlin Coroutines Test
 - **Build System**: Gradle (Kotlin DSL)
+- **CI**: GitHub Actions
 
 ---
 
@@ -52,10 +55,12 @@ The project follows a clean, modular structure:
   - `HydrationState`: Data class for current progress, history, and pairing state.
   - `HydrationCalculator`: Pure logic for progress and remaining-intake calculations.
   - `NfcTagMatcher`: Logic for validating scanned tags against the paired bottle.
+  - `DailyHydrationSummary`: Helper for daily time ranges.
 - **`data/`**: Data access and persistence.
   - `BottleTagRepository`: Interface and DataStore implementation for persisting the paired tag ID.
+  - `IntakeRepository`: Interface and Room implementation for managing intake event history.
 - **`state/`**: Manages application state.
-  - `HydrationViewModel`: Orchestrates pairing flow, intake recording, and event emission.
+  - `HydrationViewModel`: Orchestrates pairing flow, intake recording, database observation, and event emission.
 - **`ui/`**: Compose-based UI components.
   - `AquaTapScreen`: Main dashboard with pairing UI and scrollable history.
   - `WaterBottleView`: Custom animated canvas drawing.
@@ -73,12 +78,15 @@ The project follows a clean, modular structure:
 2. **Standard Scan**:
    - Bring your paired tag near the phone.
    - The app records 250 ml, vibrates, and shows a "250 ml added" snackbar.
-3. **Rejected Scan**:
+3. **Re-launch App**:
+   - Close and re-open the app.
+   - **Observe**: Your daily total and history are restored from the database.
+4. **Rejected Scan**:
    - Scan a *different* NFC tag.
    - The app rejects the scan with a "This is not your paired bottle" message.
-4. **Unpair**:
+5. **Unpair**:
    - Tap **"Unpair"** in the header to forget the current bottle and return to pairing mode.
-5. **Simulation**: Use the **"Simulate NFC scan"** button to demo the flow on an emulator.
+6. **Simulation**: Use the **"Simulate NFC scan"** button to demo the flow on an emulator.
 
 ---
 
@@ -110,16 +118,16 @@ Clone the repository and run:
 
 ## Current Limitations
 
-- **Volatile History**: Intake history is not yet persisted; it resets when the app is closed (only the paired bottle ID persists).
 - **Fixed Goal**: Daily goal is hardcoded to 2000ml.
 - **Single Bottle**: Supports pairing with only one bottle at a time.
 - **Background Scanning**: The app must be open to record a scan.
+- **Local Only**: No cloud sync or Health Connect integration.
 
 ---
 
 ## Roadmap
 
-- [ ] **History Persistence**: Add Room database for long-term intake storage.
 - [ ] **Custom Goals**: Allow users to edit their daily hydration goal.
 - [ ] **Insights**: Add Gemini-powered hydration tips.
-- [ ] **CI**: Add GitHub Actions for automated verification.
+- [ ] **Multi-day History**: Add a calendar view to see previous days' intake.
+- [ ] **Health Connect**: Sync intake data with Android Health Connect.

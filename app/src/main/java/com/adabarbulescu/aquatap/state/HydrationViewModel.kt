@@ -4,7 +4,12 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.CreationExtras
+import com.adabarbulescu.aquatap.data.AquaTapDatabase
 import com.adabarbulescu.aquatap.data.BottleTagRepository
+import com.adabarbulescu.aquatap.data.IntakeEventEntity
+import com.adabarbulescu.aquatap.data.IntakeRepository
+import com.adabarbulescu.aquatap.data.RoomIntakeRepository
+import com.adabarbulescu.aquatap.domain.DailyHydrationSummary
 import com.adabarbulescu.aquatap.domain.HydrationState
 import com.adabarbulescu.aquatap.domain.IntakeEvent
 import com.adabarbulescu.aquatap.domain.NfcTagMatcher
@@ -20,7 +25,10 @@ import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
-class HydrationViewModel(private val repository: BottleTagRepository) : ViewModel() {
+class HydrationViewModel(
+    private val bottleRepository: BottleTagRepository,
+    private val intakeRepository: IntakeRepository
+) : ViewModel() {
 
     private val _state = MutableStateFlow(HydrationState())
     val state: StateFlow<HydrationState> = _state.asStateFlow()
@@ -29,9 +37,26 @@ class HydrationViewModel(private val repository: BottleTagRepository) : ViewMode
     val events: SharedFlow<UiEvent> = _events.asSharedFlow()
 
     init {
-        repository.pairedTagId
+        // Observe paired tag
+        bottleRepository.pairedTagId
             .onEach { pairedId ->
                 _state.update { it.copy(pairedTagId = pairedId) }
+            }
+            .launchIn(viewModelScope)
+
+        // Observe today's intake
+        val (start, end) = DailyHydrationSummary.getTodayRange()
+        intakeRepository.observeEventsForDay(start, end)
+            .onEach { entities ->
+                val total = entities.sumOf { it.amountMl }
+                val history = entities.map { 
+                    IntakeEvent(it.amountMl, it.timestampMillis) 
+                }.take(MAX_HISTORY_ITEMS)
+                
+                _state.update { it.copy(
+                    totalIntakeMl = total,
+                    history = history
+                ) }
             }
             .launchIn(viewModelScope)
     }
@@ -40,12 +65,12 @@ class HydrationViewModel(private val repository: BottleTagRepository) : ViewMode
         _state.update { it.copy(isPairingEnabled = enabled) }
     }
 
-    fun handleNfcScan(tagId: String) {
+    fun handleNfcScan(tagId: String, isSimulated: Boolean = false) {
         val current = _state.value
         
         if (current.isPairingEnabled && current.pairedTagId == null) {
             viewModelScope.launch {
-                repository.savePairedTagId(tagId)
+                bottleRepository.savePairedTagId(tagId)
                 _state.update { it.copy(isPairingEnabled = false) }
                 _events.emit(UiEvent.BottlePaired)
             }
@@ -54,7 +79,7 @@ class HydrationViewModel(private val repository: BottleTagRepository) : ViewMode
 
         when (NfcTagMatcher.matches(tagId, current.pairedTagId)) {
             TagMatchResult.Match -> {
-                recordIntake()
+                recordIntake(isSimulated = isSimulated)
                 viewModelScope.launch { _events.emit(UiEvent.IntakeRecorded) }
             }
             TagMatchResult.Mismatch -> {
@@ -68,33 +93,28 @@ class HydrationViewModel(private val repository: BottleTagRepository) : ViewMode
 
     fun unpairBottle() {
         viewModelScope.launch {
-            repository.clearPairedTagId()
+            bottleRepository.clearPairedTagId()
         }
     }
 
-    fun recordIntake(amountMl: Int = DEFAULT_SCAN_AMOUNT_ML) {
+    fun recordIntake(amountMl: Int = DEFAULT_SCAN_AMOUNT_ML, isSimulated: Boolean = false) {
         if (amountMl <= 0) return
 
-        _state.update { current ->
-            current.copy(
-                totalIntakeMl = current.totalIntakeMl + amountMl,
-                history = listOf(
-                    IntakeEvent(
-                        amountMl = amountMl,
-                        timestampMillis = System.currentTimeMillis()
-                    )
-                ) + current.history.take(MAX_HISTORY_ITEMS - 1)
+        viewModelScope.launch {
+            intakeRepository.insertEvent(
+                IntakeEventEntity(
+                    amountMl = amountMl,
+                    timestampMillis = System.currentTimeMillis(),
+                    source = if (isSimulated) "simulated" else "nfc"
+                )
             )
         }
     }
 
     fun resetDailyProgress() {
-        _state.update { current ->
-            HydrationState(
-                dailyGoalMl = current.dailyGoalMl,
-                pairedTagId = current.pairedTagId,
-                isPairingEnabled = current.isPairingEnabled
-            )
+        val (start, end) = DailyHydrationSummary.getTodayRange()
+        viewModelScope.launch {
+            intakeRepository.clearDay(start, end)
         }
     }
 
@@ -113,8 +133,13 @@ class HydrationViewModel(private val repository: BottleTagRepository) : ViewMode
             @Suppress("UNCHECKED_CAST")
             override fun <T : ViewModel> create(modelClass: Class<T>, extras: CreationExtras): T {
                 val application = checkNotNull(extras[ViewModelProvider.AndroidViewModelFactory.APPLICATION_KEY])
-                val repository = com.adabarbulescu.aquatap.data.DataStoreBottleTagRepository(application.applicationContext)
-                return HydrationViewModel(repository) as T
+                val context = application.applicationContext
+                
+                val bottleRepo = com.adabarbulescu.aquatap.data.DataStoreBottleTagRepository(context)
+                val database = AquaTapDatabase.getDatabase(context)
+                val intakeRepo = RoomIntakeRepository(database.intakeDao())
+                
+                return HydrationViewModel(bottleRepo, intakeRepo) as T
             }
         }
     }

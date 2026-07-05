@@ -1,5 +1,6 @@
 package com.adabarbulescu.aquatap.ui
 
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -19,6 +20,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -36,6 +38,8 @@ fun AquaTapScreen(
     snackbarHostState: SnackbarHostState,
     onSimulateScan: () -> Unit,
     onReset: () -> Unit,
+    onTogglePairing: (Boolean) -> Unit,
+    onUnpair: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val progress = HydrationCalculator.progress(
@@ -59,20 +63,14 @@ fun AquaTapScreen(
                 .fillMaxSize()
                 .padding(paddingValues)
                 .padding(24.dp),
-            verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(20.dp)
+            verticalArrangement = Arrangement.spacedBy(20.dp)
         ) {
-            Column {
-                Text(
-                    text = "AquaTap",
-                    style = MaterialTheme.typography.headlineLarge,
-                    fontWeight = FontWeight.Bold
-                )
-
-                Text(
-                    text = "NFC-powered hydration tracking",
-                    style = MaterialTheme.typography.bodyMedium
-                )
-            }
+            HeaderSection(
+                pairedTagId = state.pairedTagId,
+                isPairingEnabled = state.isPairingEnabled,
+                onTogglePairing = onTogglePairing,
+                onUnpair = onUnpair
+            )
 
             WaterBottleView(
                 progress = progress,
@@ -86,7 +84,7 @@ fun AquaTapScreen(
             ) {
                 Column(
                     modifier = Modifier.padding(20.dp),
-                    verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(12.dp)
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     Text(
                         text = "Daily progress",
@@ -114,7 +112,7 @@ fun AquaTapScreen(
             )
 
             Row(
-                horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(12.dp)
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 Button(
                     onClick = onSimulateScan,
@@ -131,42 +129,110 @@ fun AquaTapScreen(
                 }
             }
 
-            Column(
-                modifier = Modifier
-                    .weight(1f)
-                    .verticalScroll(rememberScrollState()),
-                verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(8.dp)
-            ) {
+            RecentIntakeSection(state.history, modifier = Modifier.weight(1f))
+        }
+    }
+}
+
+@Composable
+private fun HeaderSection(
+    pairedTagId: String?,
+    isPairingEnabled: Boolean,
+    onTogglePairing: (Boolean) -> Unit,
+    onUnpair: () -> Unit
+) {
+    Column {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column {
                 Text(
-                    text = "Recent intake",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.SemiBold
+                    text = "AquaTap",
+                    style = MaterialTheme.typography.headlineLarge,
+                    fontWeight = FontWeight.Bold
                 )
 
-                if (state.history.isEmpty()) {
+                Text(
+                    text = "NFC-powered hydration tracking",
+                    style = MaterialTheme.typography.bodyMedium
+                )
+            }
+            
+            if (pairedTagId != null) {
+                TextButton(onClick = onUnpair) {
+                    Text("Unpair")
+                }
+            }
+        }
+
+        Box(modifier = Modifier.padding(top = 8.dp)) {
+            if (pairedTagId == null) {
+                if (isPairingEnabled) {
                     Text(
-                        text = "No scans recorded yet.",
-                        style = MaterialTheme.typography.bodyMedium
+                        text = "Scanning for bottle... Tap your tag now.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.primary,
+                        fontWeight = FontWeight.Medium
                     )
                 } else {
-                    state.history.forEach { event ->
-                        Column(
-                            verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(4.dp)
-                        ) {
-                            Text(
-                                text = "+${event.amountMl} ml",
-                                style = MaterialTheme.typography.bodyLarge,
-                                fontWeight = FontWeight.Medium
-                            )
-
-                            Text(
-                                text = formatTimestamp(event.timestampMillis),
-                                style = MaterialTheme.typography.bodySmall
-                            )
-
-                            HorizontalDivider()
-                        }
+                    Button(
+                        onClick = { onTogglePairing(true) },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text("Pair your bottle")
                     }
+                }
+            } else {
+                Text(
+                    text = "Paired with bottle: $pairedTagId",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.secondary
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun RecentIntakeSection(
+    history: List<com.adabarbulescu.aquatap.domain.IntakeEvent>,
+    modifier: Modifier = Modifier
+) {
+    Column(
+        modifier = modifier
+            .verticalScroll(rememberScrollState()),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        Text(
+            text = "Recent intake",
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.SemiBold
+        )
+
+        if (history.isEmpty()) {
+            Text(
+                text = "No scans recorded yet.",
+                style = MaterialTheme.typography.bodyMedium
+            )
+        } else {
+            history.forEach { event ->
+                Column(
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    Text(
+                        text = "+${event.amountMl} ml",
+                        style = MaterialTheme.typography.bodyLarge,
+                        fontWeight = FontWeight.Medium
+                    )
+
+                    Text(
+                        text = formatTimestamp(event.timestampMillis),
+                        style = MaterialTheme.typography.bodySmall
+                    )
+
+                    HorizontalDivider()
                 }
             }
         }

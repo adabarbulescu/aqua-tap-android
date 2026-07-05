@@ -1,6 +1,6 @@
 # AquaTap
 
-AquaTap is a native Android prototype that turns an NFC-tagged water bottle into a lightweight hydration tracker. Each accepted NFC scan records a 250 ml intake event, updates the daily hydration dashboard, animates a custom water bottle visualization, and provides visual and haptic feedback.
+AquaTap is a native Android prototype that turns an NFC-tagged water bottle into a lightweight hydration tracker. Record water intake through physical NFC scans, monitor your progress with an animated dashboard, and get immediate tactile feedback.
 
 The project has been manually verified with physical NFC tags on an NFC-capable Android device.
 
@@ -14,8 +14,10 @@ The project has been manually verified with physical NFC tags on an NFC-capable 
 
 ---
 
+
 ## Features
 
+- **Bottle Pairing**: Semantic NFC interaction. Pair your app with a specific bottle tag; other tags are rejected.
 - **NFC-based Intake Logging**: Uses Android Reader Mode for immediate tag detection.
 - **Physical NFC Verification**: Tested and verified with real NFC hardware.
 - **Simulated Scan Fallback**: A manual button for testing on emulators or demoing without tags.
@@ -24,7 +26,9 @@ The project has been manually verified with physical NFC tags on an NFC-capable 
 - **Recent Intake History**: A scrollable list of recent scans with timestamps.
 - **Instant Feedback**: Material 3 Snackbar and haptic (vibration) confirmation upon successful scan.
 - **Scan Cooldown Guard**: Prevents accidental duplicate entries from rapid repeated detections (1500ms window).
-- **Unit-Tested Domain Logic**: Hydration progress and remaining-intake calculations are covered with JUnit tests.
+- **Persistent Preferences**: Paired bottle ID is stored locally using DataStore.
+- **Unit Tested**: Core domain logic, tag matching, and ViewModel states are covered with JUnit tests.
+
 ---
 
 ## Tech Stack
@@ -32,9 +36,10 @@ The project has been manually verified with physical NFC tags on an NFC-capable 
 - **Language**: Kotlin
 - **UI Framework**: Jetpack Compose (Material 3)
 - **NFC**: Android NFC Reader Mode
+- **Persistence**: Preferences DataStore
 - **Architecture**: MVVM (ViewModel, StateFlow)
 - **Graphics**: Compose Canvas for custom animations
-- **Testing**: JUnit 4
+- **Testing**: JUnit 4, Kotlin Coroutines Test
 - **Build System**: Gradle (Kotlin DSL)
 
 ---
@@ -43,37 +48,37 @@ The project has been manually verified with physical NFC tags on an NFC-capable 
 
 The project follows a clean, modular structure:
 
-- **`domain/`**: Contains core business logic and models.
-  - `HydrationState`: Data class for current progress and history.
-  - `IntakeEvent`: Model for individual scan events.
-  - `HydrationCalculator`: Pure logic for progress percentages and remaining amounts.
+- **`domain/`**: Core business logic and models.
+  - `HydrationState`: Data class for current progress, history, and pairing state.
+  - `HydrationCalculator`: Pure logic for progress and remaining-intake calculations.
+  - `NfcTagMatcher`: Logic for validating scanned tags against the paired bottle.
+- **`data/`**: Data access and persistence.
+  - `BottleTagRepository`: Interface and DataStore implementation for persisting the paired tag ID.
 - **`state/`**: Manages application state.
-  - `HydrationViewModel`: Handles intake recording, history management, and state updates.
+  - `HydrationViewModel`: Orchestrates pairing flow, intake recording, and event emission.
 - **`ui/`**: Compose-based UI components.
-  - `AquaTapScreen`: Main dashboard layout with Scaffold and Snackbar support.
-  - `WaterBottleView`: Custom animated canvas drawing of the water bottle.
-  - `IntakeStats`: Statistics summary cards.
+  - `AquaTapScreen`: Main dashboard with pairing UI and scrollable history.
+  - `WaterBottleView`: Custom animated canvas drawing.
 - **`MainActivity`**:
-  - App entry point and ViewModel binding.
-  - NFC Reader Mode lifecycle management (`onResume`/`onPause`).
-  - Scan cooldown and haptic feedback orchestration.
-
-For more details, see [ARCHITECTURE.md](docs/ARCHITECTURE.md).
+  - NFC Reader Mode lifecycle management.
+  - Event collection for haptics and Snackbar feedback.
 
 ---
 
 ## Demo Flow
 
-1. **Open AquaTap**: Launch the app on an NFC-capable device.
-2. **Scan/Simulate**: Tap the **"Simulate NFC scan"** button or bring a **physical NFC tag** near the device's sensor.
-3. **Record Intake**: The app records a 250 ml intake event.
-4. **Visual & Haptic Update**:
-   - The **animated bottle** fills upward with a smooth wave animation.
-   - A **Snackbar** appears saying "250 ml added".
-   - The device triggers a short **vibration**.
-   - A new item appears in the **Recent intake** list.
-5. **Cooldown**: Hold the tag near the sensor; notice that duplicate entries are ignored for 1.5 seconds.
-6. **Reset**: Tap **"Reset"** to clear daily progress and history.
+1. **Pair Your Bottle**:
+   - On first launch, tap **"Pair your bottle"**.
+   - Scan any NFC tag. The app stores this ID as your "Bottle".
+2. **Standard Scan**:
+   - Bring your paired tag near the phone.
+   - The app records 250 ml, vibrates, and shows a "250 ml added" snackbar.
+3. **Rejected Scan**:
+   - Scan a *different* NFC tag.
+   - The app rejects the scan with a "This is not your paired bottle" message.
+4. **Unpair**:
+   - Tap **"Unpair"** in the header to forget the current bottle and return to pairing mode.
+5. **Simulation**: Use the **"Simulate NFC scan"** button to demo the flow on an emulator.
 
 ---
 
@@ -82,10 +87,9 @@ For more details, see [ARCHITECTURE.md](docs/ARCHITECTURE.md).
 ### Prerequisites
 - Android Studio Ladybug (or newer)
 - Android SDK 37 (API 37)
-- (Optional) NFC-capable Android device for physical testing
 
 ### Build and Run
-Clone the repository and run the following commands in the project root:
+Clone the repository and run:
 
 **Windows:**
 ```powershell
@@ -98,46 +102,24 @@ Clone the repository and run the following commands in the project root:
 ```
 
 ### Running Tests
-**Windows:**
 ```powershell
 .\gradlew.bat testDebugUnitTest
 ```
-
-**Unix/macOS:**
-```bash
-./gradlew testDebugUnitTest
-```
-
----
-
-## NFC Testing Notes
-
-- **Hardware Required**: Physical NFC scanning requires a real Android phone with NFC support enabled.
-- **Emulator Use**: Standard emulators do not support physical NFC. Use the **"Simulate NFC scan"** button for all non-hardware testing.
-- **Tag Compatibility**: This MVP supports standard NFC tag technologies (NFC-A, B, F, V).
-- **Validation**: Currently, the app treats *any* detected NFC tag as a valid scan. Paired-tag validation is planned for the roadmap.
-- **Lifecycle**: NFC Reader Mode is only active while the app is in the foreground.
 
 ---
 
 ## Current Limitations
 
-- **Volatile State**: No persistence yet; progress resets when the app is closed.
-- **Fixed Goal**: Daily goal is currently hardcoded to 2000ml.
-- **No Tag Pairing**: Any NFC tag triggers a scan.
-- **No Background Scanning**: The app must be open to record a scan.
-- **Local Only**: No cloud sync or Health Connect integration.
+- **Volatile History**: Intake history is not yet persisted; it resets when the app is closed (only the paired bottle ID persists).
+- **Fixed Goal**: Daily goal is hardcoded to 2000ml.
+- **Single Bottle**: Supports pairing with only one bottle at a time.
+- **Background Scanning**: The app must be open to record a scan.
 
 ---
 
 ## Roadmap
 
-- [ ] **Persistence**: Add Local storage using DataStore or Room.
+- [ ] **History Persistence**: Add Room database for long-term intake storage.
 - [ ] **Custom Goals**: Allow users to edit their daily hydration goal.
-- [ ] **Tag Pairing**: Allow the app to respond only to a selected bottle tag.
-- [ ] **History View**: Expand the recent history into a full daily/weekly view.
-- [ ] **Insights**: Add optional Gemini-powered hydration tips and insights.
-- [ ] **CI**: Add GitHub Actions for build and unit-test verification.
----
-
-
+- [ ] **Insights**: Add Gemini-powered hydration tips.
+- [ ] **CI**: Add GitHub Actions for automated verification.

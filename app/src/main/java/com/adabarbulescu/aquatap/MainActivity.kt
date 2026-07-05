@@ -13,6 +13,7 @@ import androidx.activity.viewModels
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
@@ -25,13 +26,11 @@ import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
 
-    private val hydrationViewModel by viewModels<HydrationViewModel>()
+    private val hydrationViewModel by viewModels<HydrationViewModel> { HydrationViewModel.Factory }
     private var nfcAdapter: NfcAdapter? = null
     
     private var lastScanTime: Long = 0
     private val scanCooldownMillis = 1500L
-
-    private lateinit var onScanDetected: () -> Unit
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -45,12 +44,34 @@ class MainActivity : ComponentActivity() {
             val snackbarHostState = remember { SnackbarHostState() }
             val scope = rememberCoroutineScope()
 
-            onScanDetected = {
-                hydrationViewModel.recordIntake()
-                triggerHapticFeedback()
-                scope.launch {
-                    snackbarHostState.currentSnackbarData?.dismiss()
-                    snackbarHostState.showSnackbar("250 ml added")
+            LaunchedEffect(Unit) {
+                hydrationViewModel.events.collect { event ->
+                    when (event) {
+                        HydrationViewModel.UiEvent.IntakeRecorded -> {
+                            triggerHapticFeedback()
+                            scope.launch {
+                                snackbarHostState.currentSnackbarData?.dismiss()
+                                snackbarHostState.showSnackbar("250 ml added")
+                            }
+                        }
+                        HydrationViewModel.UiEvent.BottlePaired -> {
+                            triggerHapticFeedback()
+                            scope.launch {
+                                snackbarHostState.showSnackbar("Bottle paired successfully!")
+                            }
+                        }
+                        HydrationViewModel.UiEvent.WrongBottle -> {
+                            triggerHapticFeedback() // Maybe a different vibration for error?
+                            scope.launch {
+                                snackbarHostState.showSnackbar("This is not your paired bottle.")
+                            }
+                        }
+                        HydrationViewModel.UiEvent.NoBottlePaired -> {
+                            scope.launch {
+                                snackbarHostState.showSnackbar("Please pair your bottle first.")
+                            }
+                        }
+                    }
                 }
             }
 
@@ -61,8 +82,18 @@ class MainActivity : ComponentActivity() {
                     AquaTapScreen(
                         state = state,
                         snackbarHostState = snackbarHostState,
-                        onSimulateScan = { onScanDetected() },
-                        onReset = { hydrationViewModel.resetDailyProgress() }
+                        onSimulateScan = { 
+                            // For simulation, we'll just record intake directly if paired,
+                            // or simulate a scan with a fake ID.
+                            if (state.pairedTagId == null && !state.isPairingEnabled) {
+                                scope.launch { snackbarHostState.showSnackbar("Pair a bottle first (use simulation ID)") }
+                            } else {
+                                hydrationViewModel.handleNfcScan(state.pairedTagId ?: "SIM_TAG_123")
+                            }
+                        },
+                        onReset = { hydrationViewModel.resetDailyProgress() },
+                        onTogglePairing = { hydrationViewModel.togglePairingMode(it) },
+                        onUnpair = { hydrationViewModel.unpairBottle() }
                     )
                 }
             }
@@ -82,12 +113,13 @@ class MainActivity : ComponentActivity() {
     private fun enableNfcReaderMode() {
         nfcAdapter?.enableReaderMode(
             this,
-            { _ ->
+            { tag ->
+                val tagId = tag.id.joinToString("") { "%02x".format(it) }
                 val currentTime = System.currentTimeMillis()
                 if (currentTime - lastScanTime >= scanCooldownMillis) {
                     lastScanTime = currentTime
                     runOnUiThread {
-                        onScanDetected()
+                        hydrationViewModel.handleNfcScan(tagId)
                     }
                 }
             },

@@ -9,22 +9,30 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import com.adabarbulescu.aquatap.domain.HydrationCalculator
 import com.adabarbulescu.aquatap.domain.HydrationState
@@ -40,8 +48,11 @@ fun AquaTapScreen(
     onReset: () -> Unit,
     onTogglePairing: (Boolean) -> Unit,
     onUnpair: () -> Unit,
+    onUpdateGoal: (Int) -> Unit,
     modifier: Modifier = Modifier
 ) {
+    var showGoalDialog by remember { mutableStateOf(false) }
+
     val progress = HydrationCalculator.progress(
         totalIntakeMl = state.totalIntakeMl,
         dailyGoalMl = state.dailyGoalMl
@@ -86,11 +97,20 @@ fun AquaTapScreen(
                     modifier = Modifier.padding(20.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    Text(
-                        text = "Daily progress",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.SemiBold
-                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "Daily progress",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        TextButton(onClick = { showGoalDialog = true }) {
+                            Text("Edit goal")
+                        }
+                    }
 
                     Text(
                         text = "${state.totalIntakeMl} / ${state.dailyGoalMl} ml",
@@ -132,6 +152,74 @@ fun AquaTapScreen(
             RecentIntakeSection(state.history, modifier = Modifier.weight(1f))
         }
     }
+
+    if (showGoalDialog) {
+        GoalEditDialog(
+            currentGoal = state.dailyGoalMl,
+            onDismiss = { showGoalDialog = false },
+            onConfirm = {
+                onUpdateGoal(it)
+                showGoalDialog = false
+            }
+        )
+    }
+}
+
+@Composable
+fun GoalEditDialog(
+    currentGoal: Int,
+    onDismiss: () -> Unit,
+    onConfirm: (Int) -> Unit
+) {
+    var textValue by remember { mutableStateOf(currentGoal.toString()) }
+    val parsedGoal = textValue.toIntOrNull()
+    val errorText = when {
+        textValue.isBlank() -> "Enter a goal."
+        parsedGoal == null -> "Use a whole number."
+        parsedGoal < 100 -> "Minimum goal is 100 ml."
+        else -> null
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Set daily goal") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("How many milliliters do you want to drink today?")
+                OutlinedTextField(
+                    value = textValue,
+                    onValueChange = { textValue = it },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    label = { Text("Goal (ml)") },
+                    isError = errorText != null,
+                    supportingText = {
+                        if (errorText != null) {
+                            Text(text = errorText!!, color = MaterialTheme.colorScheme.error)
+                        }
+                    },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+        },
+        confirmButton = {
+            Button(
+                enabled = errorText == null,
+                onClick = {
+                    if (parsedGoal != null && errorText == null) {
+                        onConfirm(parsedGoal)
+                    }
+                }
+            ) {
+                Text("Save")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancel")
+            }
+        }
+    )
 }
 
 @Composable

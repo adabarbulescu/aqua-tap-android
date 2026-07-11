@@ -5,10 +5,11 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.CreationExtras
 import com.adabarbulescu.aquatap.data.AquaTapDatabase
-import com.adabarbulescu.aquatap.data.BottleTagRepository
+import com.adabarbulescu.aquatap.data.DataStoreSettingsRepository
 import com.adabarbulescu.aquatap.data.IntakeEventEntity
 import com.adabarbulescu.aquatap.data.IntakeRepository
 import com.adabarbulescu.aquatap.data.RoomIntakeRepository
+import com.adabarbulescu.aquatap.data.SettingsRepository
 import com.adabarbulescu.aquatap.domain.DailyHydrationSummary
 import com.adabarbulescu.aquatap.domain.HydrationState
 import com.adabarbulescu.aquatap.domain.IntakeEvent
@@ -26,7 +27,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
 class HydrationViewModel(
-    private val bottleRepository: BottleTagRepository,
+    private val settingsRepository: SettingsRepository,
     private val intakeRepository: IntakeRepository
 ) : ViewModel() {
 
@@ -38,9 +39,16 @@ class HydrationViewModel(
 
     init {
         // Observe paired tag
-        bottleRepository.pairedTagId
+        settingsRepository.pairedTagId
             .onEach { pairedId ->
                 _state.update { it.copy(pairedTagId = pairedId) }
+            }
+            .launchIn(viewModelScope)
+
+        // Observe daily goal
+        settingsRepository.dailyGoalMl
+            .onEach { goal ->
+                _state.update { it.copy(dailyGoalMl = goal) }
             }
             .launchIn(viewModelScope)
 
@@ -65,12 +73,19 @@ class HydrationViewModel(
         _state.update { it.copy(isPairingEnabled = enabled) }
     }
 
+    fun updateDailyGoal(goalMl: Int) {
+        if (goalMl < 100) return // Reasonable minimum
+        viewModelScope.launch {
+            settingsRepository.updateDailyGoal(goalMl)
+        }
+    }
+
     fun handleNfcScan(tagId: String, isSimulated: Boolean = false) {
         val current = _state.value
         
         if (current.isPairingEnabled && current.pairedTagId == null) {
             viewModelScope.launch {
-                bottleRepository.savePairedTagId(tagId)
+                settingsRepository.savePairedTagId(tagId)
                 _state.update { it.copy(isPairingEnabled = false) }
                 _events.emit(UiEvent.BottlePaired)
             }
@@ -93,7 +108,7 @@ class HydrationViewModel(
 
     fun unpairBottle() {
         viewModelScope.launch {
-            bottleRepository.clearPairedTagId()
+            settingsRepository.clearPairedTagId()
         }
     }
 
@@ -135,11 +150,11 @@ class HydrationViewModel(
                 val application = checkNotNull(extras[ViewModelProvider.AndroidViewModelFactory.APPLICATION_KEY])
                 val context = application.applicationContext
                 
-                val bottleRepo = com.adabarbulescu.aquatap.data.DataStoreBottleTagRepository(context)
+                val settingsRepo = DataStoreSettingsRepository(context)
                 val database = AquaTapDatabase.getDatabase(context)
                 val intakeRepo = RoomIntakeRepository(database.intakeDao())
                 
-                return HydrationViewModel(bottleRepo, intakeRepo) as T
+                return HydrationViewModel(settingsRepo, intakeRepo) as T
             }
         }
     }

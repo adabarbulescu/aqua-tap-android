@@ -91,7 +91,8 @@ class MainActivity : ComponentActivity() {
                         },
                         onReset = { hydrationViewModel.resetDailyProgress() },
                         onTogglePairing = { hydrationViewModel.togglePairingMode(it) },
-                        onUnpair = { hydrationViewModel.unpairBottle() }
+                        onUnpair = { hydrationViewModel.unpairBottle() },
+                        onUpdateGoal = { hydrationViewModel.updateDailyGoal(it) }
                     )
                 }
             }
